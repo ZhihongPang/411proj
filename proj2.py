@@ -130,6 +130,16 @@ class Instruction:
     def predictor(self):
         pass
         
+class IF:
+    def __init__(self, _instruction) -> None:
+        self.instruction = _instruction
+        self.clockCycle = {}
+        self.isDone = False
+        self.isStalled = False 
+
+
+
+
 class Cache:
     def __init__(self):
         self.being_used = False
