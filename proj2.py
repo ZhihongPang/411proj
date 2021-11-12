@@ -95,13 +95,13 @@ class Memory:
     
     # when retrieving from memory, add both address # and offset together as index
     # index mod by length of memory will make mem circular
-    def retrieve_index(self, _index):
-        offset = _index % self.length_
-        return self.memory_[offset] # the data at given memory address+offset
+    def retrieve_index(self, _offset):
+        index = _offset % self.length_
+        return self.memory_[index] # the data at given memory address+offset
     
-    def set_data_at(self, _index, _data):
-        offset = _index % self.length_
-        self.memory_[offset] = _data
+    def set_data_at(self, _offset, _data):
+        index = _offset % self.length_
+        self.memory_[index] = _data
     
     def print_all_memory(self):
         print("\nAll memory location and data")
@@ -113,30 +113,87 @@ class Memory:
 # each line of code becomes an instruction class
 # probably needs a parser function to parse the instruction line before passing it to the class
 class Instruction:
-    def __init__(self, _instruction) -> None:
+    def __init__(self, _instruction, _clockCycle, _dest, _opOne, _opTwo="", _label="") -> None:
         self.instruction_ = _instruction # highly simplified
+        self.label = _label
+        self.opOne = _opOne
+        self.opTwo = _opTwo
+        self.dest = _dest
         self.is_loop = False
-        # these two variables are controlled by the predictor
-        self.last_taken = True
-        self.current_outcome = None 
+        self.is_done = False
+        
+        
 
-        self.if_ = 0
-        self.id_ = 0
-        self.ex_ = []
-        self.mem_ = []
-        self.wb_ = 0
+        self.if_ = IF(_instruction, _clockCycle,  _dest, _opOne, _opTwo="", _label="")
+        self.id_ 
+        self.ex_ 
+        self.mem_
+        self.wb_ 
     
     # if a label is found, then this function is called
     def predictor(self):
         pass
+
+    def get_is_done(self):
+        return self.is_done
         
 class IF:
-    def __init__(self, _instruction) -> None:
+    def __init__(self, _instruction,  _dest, _opOne, _opTwo="", _label="") -> None:
         self.instruction = _instruction
         self.clockCycle = {}
         self.isDone = False
         self.isStalled = False 
 
+class ID:
+    def __init__(self, _instruction,  _dest, _opOne, _opTwo="", _label="") -> None:
+        self.instruction = _instruction
+        self.clockCycle = {}
+        self.isDone = False
+        self.isStalled = False 
+
+class EX:
+    def __init__(self, _instruction,   _dest, _opOne, _opTwo="", _label="") -> None:
+        # these two variables are controlled by the predictor
+        self.last_taken = True
+        self.current_outcome = None
+        self.clockCycle = {}
+        self.instruction = _instruction
+    def execute(self):
+        if(self.instruction == "ADD"):
+            
+            pass
+
+class Pipeline:
+    def __init__(self, _fileName):
+        self.instruction = []
+        self.instExecuted = []
+        self.registers = Register()
+        self.memory = Memory()
+
+        #parse through file and load instructions list
+
+        self.instruction.append("stuff")
+
+        pass
+
+    def simulate(self):
+        #simulate pipeline
+        clockCycle = 0
+
+        while(not self.instruction[-1].get_is_done()):
+
+
+            clockCycle+=1
+            pass
+        
+
+
+        pass
+
+    def writeExcel(self, _fileName):
+        #write to excel file
+        pass
+        
 
 
 
@@ -153,6 +210,10 @@ if __name__ == '__main__':
     memory = Memory() # all memory
     registers.print_all_registers()
     memory.print_all_memory()
+
+
+    filename = ""
+    pipe = Pipeline(filename)
 
 
 
