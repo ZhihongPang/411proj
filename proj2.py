@@ -19,6 +19,9 @@ class Register:
     def get_data(self):
         return self.data_
 
+    def get_id(self):
+        return self.id_
+
 # for now, there's basically no differece between the two types of registers
 class FPRegister(Register):
     def __init__(self, _data=0.0, _id=""):
@@ -44,7 +47,7 @@ class Registers:
         for i in range(32):
             temp = FPRegister(_id=f"F{i}")
             self.FPRegs.append(temp)
-            temp = IntRegister(_id=f"R{i}")
+            temp = IntRegister(_id=f"${i}")
             self.IntRegs.append(temp)
     
     # it accepts register names in the format of F0-F31 or r0-r31
@@ -59,7 +62,7 @@ class Registers:
             
         if _id[0] == 'F':
             return self.FPRegs[index]
-        if _id[0] == 'R':
+        if _id[0] == '$':
             return self.IntRegs[index]
     
     # takes a register ID and writes data to that register
@@ -69,14 +72,14 @@ class Registers:
     
     # prints all of the FP registers
     def print_all_FP(self):
-        print("All FP Registers")
-        # print(f"Register: {i}\tData: {i.get_data()}" for i in self.FPRegs)
-        print(i for i in self.FPRegs)
+        print("\nAll FP Registers")
+        for i in range(len(self.FPRegs)):
+            print(f"Register: {self.FPRegs[i].get_id()}\tData: {self.FPRegs[i].get_data()}")
     # prints all Int registers
     def print_all_Int(self):
-        print("All Int Registers")
-        # print(f"Register: {i}\tData: {i.get_data()}" for i in self.IntRegs)
-        print(i for i in self.IntRegs)
+        print("\nAll Int Registers")
+        for i in range(len(self.IntRegs)):
+            print(f"Register: {self.IntRegs[i].get_id()}\tData: {self.IntRegs[i].get_data()}")
     # prints all registers
     def print_all_registers(self):
         self.print_all_FP()
@@ -101,7 +104,9 @@ class Memory:
         self.memory_[offset] = _data
     
     def print_all_memory(self):
-        print(f"Memory at location: {i}\tData: {self.memory_[i]}" for i in range(self.length_))
+        print("\nAll memory location and data")
+        for i in range(self.length_):
+            print(f"Memory at location: {i}\tData: {self.memory_[i]}")
 
 
 #####################################################################################################
@@ -138,6 +143,7 @@ if __name__ == '__main__':
     memory = Memory() # all memory
     registers.print_all_registers()
     memory.print_all_memory()
+
 
 
     
