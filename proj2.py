@@ -1,5 +1,11 @@
 ## CMSC 411 Project 2 ###
 
+
+import sys
+
+
+
+
 # a simple register
 class Register:
     def __init__(self, _data=0, _id=""):
@@ -171,7 +177,7 @@ class Pipeline:
         self.memory = Memory()
 
         #parse through file and load instructions list
-
+        print(_fileName)
         self.instruction.append("stuff")
 
         pass
@@ -208,14 +214,15 @@ class Cache:
 if __name__ == '__main__':
     registers = Registers() # all registers
     memory = Memory() # all memory
-    registers.print_all_registers()
-    memory.print_all_memory()
+    #registers.print_all_registers()
+    #memory.print_all_memory()
 
 
-    filename = ""
+
+    filename = sys.argv[1]
     pipe = Pipeline(filename)
 
-
+ 
 
     
 
