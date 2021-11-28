@@ -1,10 +1,6 @@
 ## CMSC 411 Project 2 ###
-
-
 import sys
-
-
-
+import re
 
 # a simple register
 class Register:
@@ -119,22 +115,35 @@ class Memory:
 # each line of code becomes an instruction class
 # probably needs a parser function to parse the instruction line before passing it to the class
 class Instruction:
-    def __init__(self, _instruction, _clockCycle, _dest, _opOne, _opTwo="", _label="") -> None:
-        self.instruction_ = _instruction # highly simplified
+    def __init__(self, _instruction,  _dest, _opOne = "", _opTwo="", _label="") -> None:
+        self.instruction = _instruction
         self.label = _label
         self.opOne = _opOne
         self.opTwo = _opTwo
         self.dest = _dest
-        self.is_loop = False
-        self.is_done = False
-        
-        
+    
 
-        self.if_ = IF(_instruction, _clockCycle,  _dest, _opOne, _opTwo="", _label="")
-        self.id_ 
-        self.ex_ 
-        self.mem_
-        self.wb_ 
+        self.if_ = IF(_instruction,  _dest, _opOne, _opTwo="", _label="")
+        # self.id_ 
+        # self.ex_ 
+        # self.mem_
+        # self.wb_ 
+    
+    #overwritten print statement to see what is in the instruction
+    def __str__(self):
+        instruction = ""
+        if self.label:
+            instruction = self.label + " " + self.instruction + " " + self.dest
+        else:
+            instruction = self.instruction + " " + self.dest
+        
+        if self.opOne:
+            instruction += " " + self.opOne
+
+        if self.opTwo:
+            instruction += " " + self.opTwo
+        
+        return instruction
     
     # if a label is found, then this function is called
     def predictor(self):
@@ -169,18 +178,111 @@ class EX:
             
             pass
 
+
+#function accepts a string and returns a regEx object and pattern number it matches
+def findPattern(line):
+    #pattern for ADD.D/SUB.D/DIV.D/MUL.D
+    pattern_1 = "^(([a-zA-Z]+):)?\s*([A-Z]+\.[A-Z]+)\s+(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*.*\n?$"
+
+    #pattern for S.D/L.D or
+    pattern_2 = "^(([a-zA-Z]+):)?\s*([A-Z]\.[A-Z])\s+(F[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
+
+    # patter for LW/SW
+    pattern_3= "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
+
+    #pattern for ADDI
+    pattern_4 = "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
+
+    #pattern for BEQ/BNE
+    pattern_5 = "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([a-zA-Z]+)\s*.*\n?$"
+
+    # pattern for LI
+    pattern_6 = "^(([a-zA-Z]+):)?\s*(LI)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
+
+    #pattern for J
+    pattern_7 = "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+\s*([a-zA-Z]+)\s*.*\n?$"
+
+    patterns = [pattern_1, pattern_2, pattern_3,pattern_4,pattern_5,pattern_6,pattern_7]
+
+    
+    pattern_num = 1
+
+    for pattern in patterns:
+        x = re.match(pattern, line)
+        
+        if x:
+            return x, pattern_num
+
+        pattern_num +=1
+
+    return 0,0    
+
+
 class Pipeline:
+    #pipeline object accepts filename and parses through it stroing instructions
     def __init__(self, _fileName):
-        self.instruction = []
+        self.instructions = []
         self.instExecuted = []
         self.registers = Register()
         self.memory = Memory()
 
-        #parse through file and load instructions list
-        print(_fileName)
-        self.instruction.append("stuff")
+        
+        with open(_fileName) as file:
+            lines = file.readlines()
 
-        pass
+        for line in lines:
+            #creating regEx object and pattern number
+            x, num = findPattern(line)
+            
+            if num in range(1,5):
+                if x.group(2):
+                    label = x.group(2)
+                inst = x.group(3)
+                dest = x.group(4)
+                op_one = x.group(5)
+                op_two = x.group(6)
+                if x.group(2):
+                    inst = Instruction(inst,dest, op_one, op_two, label)
+                    
+                else:
+                    inst = Instruction(inst, dest, op_one, op_two)
+                
+            if num==6:
+                if x.group(2):
+                    label = x.group(2)
+                inst = x.group(3)
+                dest = x.group(4)
+                op_one = x.group(5)
+                
+                if x.group(2):
+                    inst = Instruction(inst, dest, op_one, "", label)
+                    
+                    
+                else:
+                    inst = Instruction(inst, dest, op_one )
+                    
+
+            if num==7:
+                if x.group(2):
+                    label = x.group(2)
+                inst = x.group(3)
+                dest = x.group(4)
+                
+                if x.group(2):
+                    inst = Instruction(inst, dest, "", "",label)
+                    
+                else:
+                    inst = Instruction(inst, dest)
+
+            self.instructions.append(inst)
+            
+        #this isn't needed just hows what instructions are in the instruction list
+        for inst in self.instructions:
+            print(inst)
+
+                    
+
+        
 
     def simulate(self):
         #simulate pipeline
@@ -195,6 +297,7 @@ class Pipeline:
 
 
         pass
+
 
     def writeExcel(self, _fileName):
         #write to excel file
