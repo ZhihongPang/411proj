@@ -277,19 +277,19 @@ class Pipeline:
     # function accepts a string and returns a regEx object and pattern number it matches
     def findPattern(line):
         # pattern for ADD.D/SUB.D/DIV.D/MUL.D, the ALU instructions
-        pattern_1 = "^(([a-zA-Z]+):)?\s*([A-Z]+\.[A-Z]+)\s+(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*.*\n?$"
+        pattern_1 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+\.[A-Z]+)\s+(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*.*\n?$"
         # pattern for S.D/L.D or
-        pattern_2 = "^(([a-zA-Z]+):)?\s*([A-Z]\.[A-Z])\s+(F[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
+        pattern_2 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]\.[A-Z])\s+(F[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
         # patter for LW/SW
-        pattern_3= "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
+        pattern_3= "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
         # pattern for ADDI
-        pattern_4 = "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
+        pattern_4 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
         # pattern for BEQ/BNE
-        pattern_5 = "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([a-zA-Z]+)\s*.*\n?$"
+        pattern_5 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([a-zA-Z]+)\s*.*\n?$"
         # pattern for LI
-        pattern_6 = "^(([a-zA-Z]+):)?\s*(LI)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
+        pattern_6 = "^(([a-zA-Z0-9]+):)?\s*(LI)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
         # pattern for J
-        pattern_7 = "^(([a-zA-Z]+):)?\s*([A-Z]+)\s+\s*([a-zA-Z]+)\s*.*\n?$"
+        pattern_7 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+\s*([a-zA-Z]+)\s*.*\n?$"
         patterns = [pattern_1, pattern_2, pattern_3,pattern_4,pattern_5,pattern_6,pattern_7]
 
         for pattern in patterns:
