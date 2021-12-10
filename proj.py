@@ -199,7 +199,7 @@ class Pipeline:
         self.insExecuted = []
         self.registers = Registers()
         self.memory = Memory()
-        self.cache = [{0:[0]}, {1:[0]}, {2:[0]}, {3:[0]}] # list of dictionaries, where key:memory address, value:[dirty bit, data], dirty bit == 1 when data has been altered
+        self.cache = {0:[0],1:[0],2:[0],3:[0]} # list of dictionaries, where key:memory address, value:[dirty bit, data], dirty bit == 1 when data has been altered
         self.cache_size = 4 # 4 sets
 
         # all_instructions = Pipeline.parser()
@@ -257,25 +257,23 @@ class Pipeline:
         return instructions
 
     # function accepts a string and returns a regEx object and pattern number it matches
-    # function accepts a string and returns a regEx object and pattern number it matches
     def findPattern(line):
         # pattern for ADD.D/SUB.D/DIV.D/MUL.D, the ALU instructions
-        pattern_1 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+\.[A-Z]+)\s+(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*,\s*(F[1-3]?[0-9])\s*.*\n?$"
+        pattern_1 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+\.[A-Z]+)?\s*(F[1-3]?[0-9])?\s*,?\s*(F[1-3]?[0-9])?\s*,?\s*(F[1-3]?[0-9])?\s*.*\n?$"
         # pattern for S.D/L.D or
-        pattern_2 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]\.[A-Z])\s+(F[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
+        pattern_2 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]\.[A-Z])?\s*(F[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\(?(\$[1-3]?[0-9])?\)?\s*.*\n?$"
         # patter for LW/SW
-        pattern_3= "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\((\$[1-3]?[0-9])\)\s*.*\n?$"
+        pattern_3= "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*(\$[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\(?(\$[1-3]?[0-9])?\)?\s*.*\n?$"
         # pattern for ADDI
-        pattern_4 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
+        pattern_4 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*(\$[1-3]?[0-9])?\s*,?\s*(\$[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\s*.*\n?$"
         # pattern for BEQ/BNE
-        pattern_5 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+(\$[1-3]?[0-9])\s*,\s*(\$[1-3]?[0-9])\s*,\s*([a-zA-Z]+)\s*.*\n?$"
+        pattern_5 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*(\$[1-3]?[0-9])?\s*,?\s*(\$[1-3]?[0-9])?\s*,?\s*([a-zA-Z]+)?\s*.*\n?$"
         # pattern for LI
-        pattern_6 = "^(([a-zA-Z0-9]+):)?\s*(LI)\s+(\$[1-3]?[0-9])\s*,\s*([1-9]?[0-9]?[0-9])\s*.*\n?$"
+        pattern_6 = "^(([a-zA-Z0-9_]+):)?\s*(LI)?\s*(\$[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\s*.*\n?$"
         # pattern for J
-        pattern_7 = "^(([a-zA-Z0-9]+):)?\s*([A-Z]+)\s+\s*([a-zA-Z]+)\s*.*\n?$"
-        patterns = [pattern_1, pattern_2, pattern_3,pattern_4,pattern_5,pattern_6,pattern_7]
-
-        for pattern in patterns:
+        pattern_7 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*\s*([a-zA-Z]+)?\s*.*\n?$"
+        
+        for pattern in [pattern_1, pattern_2, pattern_3,pattern_4,pattern_5,pattern_6,pattern_7]:
             x = re.match(pattern, line)
             if x:
                 return x
@@ -352,10 +350,9 @@ class Pipeline:
             # these two lines find the largest cycle to stall until, if Any registers aren't ready to be read/writeen to
             largest_cycle = max(self.registers.retrieve(R).get_read_cycle() for R in [destination_register, source_register_one, source_register_two] if R)
             largest_cycle = max(largest_cycle, self.registers.retrieve(R).get_write_cycle() for R in [destination_register, source_register_one, source_register_two] if R)
-            for reg in [destination_register, source_register_one, source_register_two]:
-                if reg:
-                    self.registers.retrieve(op_one).get_read_cycle() # op one with this opcode is the destination
 
+            for i in range(ID_cycle+1, largest_cycle):
+                stalled_cycles.append(i)
 
             # adds stalls between the ID and EX stages, identicle to the chunk above, can make a function that accepts a min-cycle and the stalled cycles list
             for cycle in range(len(stalled_cycles)-1):
