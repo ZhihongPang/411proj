@@ -1,4 +1,4 @@
-### CMSC 411 Project 2 ###
+### CMSC 411 Project ###
 import os
 from os import error
 import sys
@@ -152,10 +152,9 @@ class Instruction:
     The stalled cycles will get referenced by the cycle right after, so the instruction after will know which cycles to not use
     The Functional unit functions act as setters that sets the cycles for the stages
     
-    Note: predictor stuff
+    Note: need to do predictor stuff
     """
-    def __init__(self, _label, _opcode, _op_one, _op_two, _op_three, _workbook, _stalled_cycles=[], _cycle=1) -> None:
-        self.cycle_ = _cycle
+    def __init__(self, _label, _opcode, _op_one, _op_two, _op_three, _if=1, _id=2, _ex=[3], _mem=[4], _wb=5) -> None:
         self.opcode_ = _opcode
         self.label_ = _label
         self.op_one_ = _op_one # op one is used as dest most of the time
@@ -163,46 +162,19 @@ class Instruction:
         self.op_three_ = _op_three
         
         # the functional units will be kept track of using variables
-        self.if_ = 0
-        self.id_ = 0
-        self.ex_ = []
-        self.mem_ = []
-        self.wb_ = 0
-        self.stalled_cycles = _stalled_cycles
-
-        # internal variables that keeps track of the instruction types
-        self.mem_instructions_ = ["L.D", "S.D", "LI", "LW", "SW"]
-        self.alu_instructions_ = ["ADD", "ADDI", "ADD.D", "SUB.D", "SUB", "MUL.D", "DIV.D"]
-        self.branch_instructions_ = ["BEQ", "BNE", 'J']
+        self.if_ = _if
+        self.id_ = _id
+        self.ex_ = _ex
+        self.mem_ = _mem
+        self.wb_ = _wb
 
         self.is_beginning_of_loop_ = False
         self.is_done_ = False
-    
+
     def __str__(self) -> str:
         if self.op_three_ == "":
             return f"{self.label_} {self.opcode_} {self.op_one_}, {self.op_two_}\n"
         return f"{self.label_} {self.opcode_} {self.op_one_}, {self.op_two_}, {self.op_three_}\n"
-    
-    # the five pipeline cycles for now
-    def IF(self):
-        self.if_ = self.cycle_
-        self.cycle_ += 1
-    
-    def ID(self):
-        self.id_ = self.cycle_
-        self.cycle_ += 1
-    
-    def EX(self):
-        self.ex_.append(self.cycle_)
-        self.cycle_ += 1
-    
-    def MEM(self):
-        self.mem_.append(self.cycle_)
-        self.cycle_ += 1
-    
-    def WB(self):
-        self.wb_ = self.cycle_
-        self.cycle_ += 1
 
     # since a branch instruction will only look at itself for prediction, each instruction class will keep track of its own predictor
     def predictor(self):
@@ -240,39 +212,51 @@ class Pipeline:
     a two dimensional array where each index of the list is a list of label, opcode, all the operands for every line of the text file
     """
     def __init__(self, _fileName="test.txt"):
-        self.instructions = [] # holds a list of instruction objects, basically the PC
-        self.insExecuted = [] # a list of instruction objects to be written into an excel sheet
+        self.instructions = {} # holds a dictionary of instructions, with keys being instruction address and value being the instructions
+        self.loops = {} # tracks where loops begin, key = loop name : value = instruction's address
+        self.insExecuted = [] # a list of executed instruction objects to be written into an excel sheet
         self.registers = Registers()
         self.memory = Memory()
         
+        # internal variables that keeps track of the instruction types
+        self.mem_instructions_ = ["L.D", "S.D", "LI", "LW", "SW"]
+        self.alu_instructions_ = ["ADD", "ADDI", "ADD.D", "SUB.D", "SUB", "MUL.D", "DIV.D"]
+        self.branch_instructions_ = ["BEQ", "BNE", 'J']
+
         with open(_fileName) as file:
             lines = file.readlines()
 
-        for line in lines:
-            # creating regEx object and pattern number
-            x = Pipeline.findPattern(line)
-            if x != 0: # find_patterns returns 0 if no patterns matched/invalid instruction passed
-                label = opcode = op_one = op_two = op_three = "" # place holders
-                if x.group(2):
-                    label = x.group(2)
-                opcode = x.group(3)
-                op_one = x.group(4)
+        # counter = 0 # emulate a program counter
+        # for line in lines:
+        #     # creating regEx object and pattern number
+        #     x = Pipeline.findPattern(line)
+        #     if x != 0: # find_patterns returns 0 if no patterns matched/invalid instruction passed
+        #         label = opcode = op_one = op_two = op_three = "" # flushes every variable between iterations
+        #         if x.group(2):
+        #             label = x.group(2)
+        #         opcode = x.group(3)
+        #         op_one = x.group(4)
 
-                # these try except blocks will catpture additional operands if they exist
-                try: 
-                    x.group(5)
-                    op_two = x.group(5)
-                except IndexError:
-                    op_two = ""
-                try:
-                    x.group(6)
-                    op_three = x.group(6)
-                except IndexError:
-                    op_three = ""
-                instruction = Instruction(_workbook=0,_label=label,_opcode=opcode,_op_one=op_one,_op_two=op_two,_op_three=op_three)
-            else:
-                return Exception # if x detected an invalid pattern, raise error
-            self.instructions.append(instruction)
+        #         # these try except blocks will catpture additional operands if they exist
+        #         try: 
+        #             op_two = x.group(5)
+        #         except IndexError:
+        #             op_two = ""
+        #         try:
+        #             op_three = x.group(6)
+        #         except IndexError:
+        #             op_three = ""
+        #         instruction = Instruction(_label=label,_opcode=opcode,_op_one=op_one,_op_two=op_two,_op_three=op_three)
+        #     else:
+        #         raise Exception # if x detected an invalid pattern, raise error
+            
+        #     counter += 1
+        #     self.instructions[counter] = instruction
+        all_instructions = Pipeline.parser()
+        counter = 0 # instruction address counter, first instruction is at address 0000
+        for instruction in all_instructions:
+            self.instructions[counter] = instruction
+            counter += 1
 
     # function accepts a string and returns a regEx object and pattern number it matches
     def findPattern(line):
@@ -296,20 +280,37 @@ class Pipeline:
             x = re.match(pattern, line)
             if x:
                 return x
-        return 0 
+        return 0
+    
+    # just take the filename and do something with it
+    # takes a MIPS file, returns a list of instruction lists
+    def parser(_filename="test.txt"):
+        instructions = []
+        with open(_filename, 'r', encoding='utf-8', errors='ignore') as file:
+            lines = file.readlines()
+            # parses the instruction line by comma, newline, some weird space character, and tab
+            # the delim ':' is maintained for label recognition
+            for line in lines:
+                line = line.replace(',', ' ').replace('\n', ' ').replace('\xa0', ' ').replace('\t', ' ')
+                line = line.split(' ')
+                line = [i for i in line if i] # cleans all empty space in the parsed instruction line
+                instructions.append(line)    
+        return instructions
 
     def print_all_instruction_objects(self):
-        for instruction in self.instructions:
-            print(instruction)
+        for instruction_address in self.instructions:
+            print(instruction_address, self.instructions[instruction_address])
 
     def execute_lines(self):
-        cycles = 0
+        loops = {} # when a loop is found, add it to the dicitonary with its instruction address
+        counter = 0 # the program counter
+        id_cycle = 2 # the initial cycle for the id stage for any instruction
         for instruction_line in self.instructions:
-            instruction_line.IF()
-            instruction_line.ID()
-            instruction_line.EX()
-            instruction_line.MEM()
-            instruction_line.WB()
+            # line_if = instruction_line.IF() # no more funcitonal units functions
+            # instruction_line.ID() # needs to manage the cycles and executions whitin
+            # instruction_line.EX() # this function
+            # instruction_line.MEM()
+            # instruction_line.WB()
             self.insExecuted.append(instruction_line)
 
     def write_to_excel(self, _filename="test.xls"):
@@ -346,4 +347,4 @@ if __name__ == '__main__':
     pipeline.print_all_instruction_objects()
 
     pipeline.execute_lines()
-    pipeline.write_to_excel()
+    # pipeline.write_to_excel()
