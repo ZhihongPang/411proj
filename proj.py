@@ -1,11 +1,8 @@
 ### CMSC 411 Project ###
 import os
-from os import error, pipe
 import sys
 from typing import Optional
 import xlwt
-import re
-from xlwt import Workbook
 
 class Registers:
     """
@@ -82,7 +79,7 @@ class Registers:
         
         def __str__(self) -> str:
             """ A string representation of the register object """
-            return f"Register: {self.id_}\tData: {self.data_}\t\tRead/Write Cycles:{self.read_cycle}, {self.write_cycle}"
+            return f"Register: {self.id_}\tData: {self.data_}    \t\tRead/Write Cycles:{self.read_cycle}, {self.write_cycle}"
             
         # setters and getters for the register
         def set_data(self, _data=0):
@@ -95,6 +92,10 @@ class Registers:
             return self.read_cycle
         def get_write_cycle(self):
             return self.write_cycle
+        def set_read_cycle(self,cycle=0):
+            self.read_cycle = cycle
+        def set_write_cycle(self,cycle=0):
+            self.write_cycle = cycle
 
     # the two types of registers
     class FPRegister(Register):
@@ -102,15 +103,11 @@ class Registers:
             super().__init__(_data=_data, _id=_id)
         def set_data(self, _data=0.0):
             self.data_ = float(_data) # type checking by type casting lol
-        def get_type(self):
-            return "FP"
     class IntRegister(Register):
         def __init__(self, _data=0, _id=""):
             super().__init__(_data=_data, _id=_id)
         def set_data(self, _data=0):
             self.data_ = int(_data)
-        def get_type(self):
-            return "Int"
 
 class Memory:
     """
@@ -120,15 +117,14 @@ class Memory:
     def __init__(self, data_set=[45,12,0,92,10,135,254,127,18,4,55,8,2,98,13,5,233,158,167]):
         self.memory_ = data_set
         self.length_ = len(self.memory_)
-        self.being_used_ = False
     
-    # address will be in format of $0 to $18
-    def retrieve_at_address(self,  _address, _offset=0):
+    # address will either be a single int immediate or an int register, with an optional offset
+    # when a register is found, retrieve the value at that regsister and pass its value as the address, pass offset as well if found
+    def retrieve_at_address(self,  _address:int, _offset=0):
         """ 
         When using this function, the offset is assumed to be 0 unless another offset is passed to it
         Returns memory at address at given offset
         """
-        _address = _address.replace('$', '') 
         _address = int(_address) + int(_offset) # adds both together to get the actual address
         _address %= self.length_ # loops around
         return self.memory_[_address]
@@ -140,6 +136,10 @@ class Memory:
         _address %= self.length_
         self.memory_[_address] = _data
 
+    # getter function
+    def get_length(self):
+        return self.length_
+
     def print_all_memory(self):
         print("\nAll memory location and data")
         for i in range(self.length_):
@@ -147,40 +147,24 @@ class Memory:
 
 
 class Instruction:
-    """
-    Each instruction object tracks the cycles that they execute each cycles with internal variables
-    Ex/Mem/Stall, which have multiple stages will keep track of their cycles using lists
-    The stalled cycles will get referenced by the cycle right after, so the instruction after will know which cycles to not use
-    The Functional unit functions act as setters that sets the cycles for the stages
-    
-    Note: need to do predictor stuff
-    """
-    def __init__(self, _label, _opcode="", _op_one="", _op_two="", _op_three="", _if=1, _id=2, _ex=[3], _mem=[4], _wb=5) -> None:
+    """ Each instruction object tracks their own labels, opcode and operands """
+    def __init__(self, _label="", _opcode="", _op_one="", _op_two="", _op_three="") -> None:
         self.opcode_ = _opcode
         self.label_ = _label
-        self.op_one_ = _op_one # op one is used as dest most of the time
+        self.op_one_ = _op_one
         self.op_two_ = _op_two
         self.op_three_ = _op_three
-        
-        # might not need
-        # the functional units will be kept track of using variables
-        self.if_ = _if
-        self.id_ = _id
-        self.ex_ = _ex
-        self.mem_ = _mem
-        self.wb_ = _wb
-
-        self.is_beginning_of_loop_ = False
-        self.is_done_ = False
 
     def __str__(self) -> str:
+        if self.opcode_ == "":
+            return f"{self.label_}\n"
+        if self.op_one_ == "":
+            return f"{self.label_} {self.opcode_}\n"
+        if self.op_two_ == "":
+            return f"{self.label_} {self.opcode_} {self.op_one_}\n"
         if self.op_three_ == "":
             return f"{self.label_} {self.opcode_} {self.op_one_}, {self.op_two_}\n"
         return f"{self.label_} {self.opcode_} {self.op_one_}, {self.op_two_}, {self.op_three_}\n"
-
-    # since a branch instruction will only look at itself for prediction, each instruction class will keep track of its own predictor
-    def predictor(self):
-        pass
     
     def print_instruction(self):
         print(f"Label: {self.label_}\tOpcode: {self.opcode_}\tOp One: {self.op_one_}\tOp Two: {self.op_two_}\tOp Three: {self.op_three_}\n")
@@ -192,54 +176,36 @@ class Pipeline:
     """
     def __init__(self, _fileName="test.txt"):
         self.instructions = {} # holds a dictionary of instructions, with keys:instruction address and value:instructions
-        self.loops = {} # tracks where loops begin, key:loop name, value:instruction's address
+        self.loops = {} # tracks where loops begin, key:loop name, value:[instruction's address, 1/0 where 1 = last taken and 0 = last not taken]
 
         # current format of executed instructions:
-        # list of dictionaries, index:executed instructions, key:cycle, value:stage
+        # list of dictionaries, index:executed instructions, key:cycle, value:dictionary of stages
         self.insExecuted = []
         self.registers = Registers()
         self.memory = Memory()
-        self.cache = {0:[0],1:[0],2:[0],3:[0]} # list of dictionaries, where key:memory address, value:[dirty bit, data], dirty bit == 1 when data has been altered
+        # to modify cache do self.cache[set#][1] = address and self.cache[set#] = data
+        self.cache = {0:[0, None, None],1:[0, None, None],2:[0, None, None],3:[0, None, None]} # key:set # (mem address % len(cache)), value:[dirty bit, memory address, data], dirty bit == 1 when data has been altered
         self.cache_size = 4 # 4 sets
 
-        # all_instructions = Pipeline.parser()
-        # counter = 0 # instruction address counter, first instruction is at address 0000
-        # for instruction in all_instructions:
-        #     if ':' in instruction[0]: # if a loop is found, then add it to the dictionary, key:loop name value:loop address
-        #         loop_name = instruction[0].replace(':', '')
-        #         self.loops[loop_name] = counter
-        #     self.instructions[counter] = instruction
-        #     counter += 1
+        all_instructions = Pipeline.parser()
+        counter = 0 # instruction address counter, first instruction is at address 0000
+        for instruction in all_instructions:
+            if ':' in instruction[0]: # if a loop is found, then add it to the dictionary, key:loop name value:loop address
+                loop_name = instruction[0].replace(':', '')
+                self.loops[loop_name] = [counter, 1] # 1 indicate the branch will initially be taken
+            self.instructions[counter] = instruction
+            counter += 1
     
-        with open(_fileName) as file:
-            lines = file.readlines()
-        counter = 0
-        for line in lines:
-            # creating regEx object and pattern number
-            x = Pipeline.findPattern(line)
-            if x != 0: # find_patterns returns 0 if no patterns matched/invalid instruction passed
-                label = opcode = op_one = op_two = op_three = "" # place holders
-                if x.group(2):
-                    label = x.group(2)
-                    self.loops[counter] = label
-                opcode = x.group(3)
-                op_one = x.group(4)
-
-                # these try except blocks will catpture additional operands if they exist
-                try: 
-                    x.group(5)
-                    op_two = x.group(5)
-                except IndexError: op_two = ""
-                try:
-                    x.group(6)
-                    op_three = x.group(6)
-                except IndexError: op_three = ""
-                instruction = Instruction(_workbook=0,_label=label,_opcode=opcode,_op_one=op_one,_op_two=op_two,_op_three=op_three)
-                self.instructions[counter] = instruction
-                counter += 1
-            else:
-                return Exception # if x detected an invalid pattern, raise error
-            
+    def __str__(self,instruction): # string representation of an instruction list
+        if len(instruction) <= 1:
+            return f"{instruction[0]}"
+        if len(instruction) == 2:
+            return f"{instruction[0]} {instruction[1]}"
+        if len(instruction) == 3:
+            return f"{instruction[0]} {instruction[1]}, {instruction[2]}"
+        if len(instruction) == 4:
+            return f"{instruction[0]} {instruction[1]} {instruction[2]}, {instruction[3]}"
+        return f"{instruction[0]} {instruction[1]} {instruction[2]}, {instruction[3]}, {instruction[4]}"
 
     # just take the filename and do something with it
     # takes a MIPS file, returns a list of instruction lists
@@ -256,29 +222,6 @@ class Pipeline:
                 instructions.append(line)    
         return instructions
 
-    # function accepts a string and returns a regEx object and pattern number it matches
-    def findPattern(line):
-        # pattern for ADD.D/SUB.D/DIV.D/MUL.D, the ALU instructions
-        pattern_1 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+\.[A-Z]+)?\s*(F[1-3]?[0-9])?\s*,?\s*(F[1-3]?[0-9])?\s*,?\s*(F[1-3]?[0-9])?\s*.*\n?$"
-        # pattern for S.D/L.D or
-        pattern_2 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]\.[A-Z])?\s*(F[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\(?(\$[1-3]?[0-9])?\)?\s*.*\n?$"
-        # patter for LW/SW
-        pattern_3= "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*(\$[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\(?(\$[1-3]?[0-9])?\)?\s*.*\n?$"
-        # pattern for ADDI
-        pattern_4 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*(\$[1-3]?[0-9])?\s*,?\s*(\$[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\s*.*\n?$"
-        # pattern for BEQ/BNE
-        pattern_5 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*(\$[1-3]?[0-9])?\s*,?\s*(\$[1-3]?[0-9])?\s*,?\s*([a-zA-Z]+)?\s*.*\n?$"
-        # pattern for LI
-        pattern_6 = "^(([a-zA-Z0-9_]+):)?\s*(LI)?\s*(\$[1-3]?[0-9])?\s*,?\s*([1-9]?[0-9]?[0-9])?\s*.*\n?$"
-        # pattern for J
-        pattern_7 = "^(([a-zA-Z0-9_]+):)?\s*([A-Z]+)?\s*\s*([a-zA-Z]+)?\s*.*\n?$"
-        
-        for pattern in [pattern_1, pattern_2, pattern_3,pattern_4,pattern_5,pattern_6,pattern_7]:
-            x = re.match(pattern, line)
-            if x:
-                return x
-        return 0 
-
     # for testing
     def print_all_instruction_objects(self):
         for instruction_address in self.instructions:
@@ -287,51 +230,9 @@ class Pipeline:
         for loops in self.loops:
             print("Address:", self.loops[loops], "Name:", loops)
 
-    def execute_lines(self):
-        instruction_counter = 0 # program counter
-        stalled_cycles = [0, 1] # list of stalled cycles, cycles 0 and 1 will never be stalls, so they're used as place holders
-        last_ID_cycle = 1 # the cycle where the last ID cycle happened
-        most_recent_stall = 0 # 0 is a placeholder
-        while True:
-            # current instruction cycles to stages, key:cycle value:stage, this is then appended to the executed instruction list
-            current_instruction = {}
-
-            # fetch instruction and stores the cycle data
-            instruction = self.instructions[instruction_counter] # using instruction_counter as key, fetch corresponding instruction
-            IF_cycle = last_ID_cycle
-            current_instruction[IF_cycle] = "IF" # this adds key:cycle value:stage into the current instruction dictionary
-            
-            # between each IF stage and ID stage, check for stalled cycles
-            # while checking for stalled cycles, also check if stalled cycles is continuous, if there's any break in stalled cycle nums,
-            # then the next stage's cycle will be the last continuous stall's cycle + 1, because stalled cycles might have stalls beyond the current stage
-            for cycle in range(len(stalled_cycles)-1):
-                if stalled_cycles[cycle+1] > IF_cycle: # ignore all stalled cycles before the current IF stage
-                    if (stalled_cycles[cycle+1] - stalled_cycles[cycle]) > 1: # there's a break in all of the stalled cycles larger than the IF stage
-                        most_recent_stall = stalled_cycles[cycle] # catches the last stall before the ID stage
-                        break # once the break is found, there's no more stalls between the IF stage and the ID stage
-                    current_instruction[cycle] = "Stall" # adds stalls for all continuous cycles in the stalled cycles list
-
-            # decode the instruction
-            # if a loop is present, example: ['Loop:', 'L.D', 'F0', '0($2)'], ':' in index 0 indicates a loop, so start decoding from index 1, else decode from 0
-            # opcode_index = 1 if ':' in instruction[0] else 0
-            opcode = instruction[opcode_index] # sometimes a line of instructions is just the label
-            try: op_one = instruction[opcode_index+1] 
-            except Exception: pass # ignore if there's only a label
-            try: op_two = instruction[opcode_index+2]
-            except Exception: pass 
-            try: op_three = instruction[opcode_index+3]
-            except Exception: pass 
-
-            op_one = self.instructions[instruction_counter].op_one_
-            
-            
-            # stores the cycle information for the ID stage
-            ID_cycle = most_recent_stall+1
-            last_ID_cycle = ID_cycle # change the last ID cycle for next iteration
-            current_instruction[ID_cycle] = "ID"
-
-            # finds out whether the registers used are ok to be read/written to
-            # adds stalls when registers are not ok being read/written to
+    def execute(self):
+        def registers_check(status='R'): # status is Read by defualt, anything else checks for write, which checks for the largest read-ready and the largest write-ready cycles respectively
+            """ add stalls up to the largest cycle required in order to avoid a data hazard """
             source_register_one = source_register_two = destination_register = "" # place holder
             all_opcodes = ["ADD","ADDI","ADD.D","SUB","SUB.D","MUL.D","DIV.D","L.D","LW","S.D","SW","BEQ","BNE"] # J is not included as it does not use registers
             if opcode in all_opcodes:
@@ -341,57 +242,163 @@ class Pipeline:
                     source_register_two = op_three
                 if opcode in all_opcodes[7:9]: # LD writes to operand one
                     destination_register = op_one
-                if opcode in all_opcodes[9:11]: # SD reads from operand one
+                if opcode in all_opcodes[9:11]: # SD reads from operand one, don't worry about the destination/memory here
                     source_register_one = op_one # don't worry about cache here, this is just decoding the instruction
                 if opcode in all_opcodes[11:]:
                     source_register_one = op_one
                     source_register_two = op_two
+            # finds the largest read/write cycles, largest cycle is whichever one requested
+            largest_read_cycle = max((self.registers.retrieve(R).get_read_cycle() for R in [destination_register, source_register_one, source_register_two] if R), default=0)
+            largest_write_cycle = max((self.registers.retrieve(R).get_write_cycle() for R in [destination_register, source_register_one, source_register_two] if R),default=0)
+            largest_cycle = largest_read_cycle if status == 'R' else largest_write_cycle
+            if largest_cycle > ID_cycle:
+                for i in range(ID_cycle+1, largest_cycle):
+                    if i not in stalled_cycles: # no need to add repeated stall cycles
+                        stalled_cycles.append(i) 
+                        print(f"Stalled cycle added: {i}") # debug
 
-            # these two lines find the largest cycle to stall until, if Any registers aren't ready to be read/writeen to
-            largest_cycle = max(self.registers.retrieve(R).get_read_cycle() for R in [destination_register, source_register_one, source_register_two] if R)
-            largest_cycle = max(largest_cycle, self.registers.retrieve(R).get_write_cycle() for R in [destination_register, source_register_one, source_register_two] if R)
+        def write_stalled_cycles(smallest_cycle:int):
+            """
+            helper function that iterates through the stalled cycles to find the smallest stalled cycle larger than a given cycle
+            the given cycle is usually the most recent stage's cycle
+            example: IF cycle happens to be 5, this function will check if cycle 6 is in the stalled cycles list
+            If cycle 6 is found, then keep adding stalls into the current instruction until there's a skip in the cycles, which indicates the end of the stalls
+            """
+            most_recent_stall = smallest_cycle
+            if smallest_cycle+1 in stalled_cycles:
+                for cycle in stalled_cycles:
+                    if cycle == most_recent_stall+1: 
+                        current_instruction[cycle] = "Stall" 
+                        most_recent_stall = cycle
+            return most_recent_stall # if no immediate stalls are found | if there's a break between stalls
 
-            for i in range(ID_cycle+1, largest_cycle):
-                stalled_cycles.append(i)
 
-            # adds stalls between the ID and EX stages, identicle to the chunk above, can make a function that accepts a min-cycle and the stalled cycles list
-            for cycle in range(len(stalled_cycles)-1):
-                if stalled_cycles[cycle+1] > ID_cycle: 
-                    if (stalled_cycles[cycle+1] - stalled_cycles[cycle]) > 1: 
-                        most_recent_stall = stalled_cycles[cycle]
-                        break
-                    current_instruction[cycle] = "Stall"
+        instruction_counter = 0 
+        stalled_cycles = [] # list of stalled cycles
+        last_ID_cycle = 1 # tracks the last ID cycle  
+        for i in range(len(self.instructions)): 
+            # key:cycle value:{0:raw instruction line, IF cycle:IF, IF-ID stalls, ID cycle:ID, ID-EX stalls, all EX cycles:EX(#),...
+            #                               ... EX-MEM stalls, all MEM cycles:MEM, WB cycle:WB}
+            current_instruction = {}
 
-            current_cycle = stalled_cycles[-1]+1 if len(stalled_cycles) > 0 else current_cycle+1 # problem is that stalled cycles will be shared by all instructions, so last index doesnt work
+            # fetch instruction and stores the cycle data
+            instruction = self.instructions[instruction_counter] # using instruction_counter as key, fetch corresponding instruction
+            IF_cycle = last_ID_cycle
+            current_instruction[0] = self.__str__(self.instructions[instruction_counter])
+            current_instruction[IF_cycle] = "IF" # this adds key:cycle value:stage into the current instruction dictionary
+            instruction_counter += 1 # after fetching, increment instruction counter
+            
+            # between each IF-ID stage, write any stalled cycles to the current instruction
+            most_recent_stall = write_stalled_cycles(IF_cycle)
+
+            # decode the instruction
+            # if a loop is present, example: ['Loop:', 'L.D', 'F0', '0($2)'], ':' in index 0 indicates a loop, so start decoding from index 1, else decode from 0
+            opcode_index = 1 if ':' in instruction[0] else 0
+            try: opcode = instruction[opcode_index] # sometimes a line of instructions is just the label
+            except Exception: opcode = "" 
+            try: op_one = instruction[opcode_index+1] 
+            except Exception: op_one = ""
+            try: op_two = instruction[opcode_index+2]
+            except Exception: op_two = "" 
+            try: op_three = instruction[opcode_index+3]
+            except Exception: op_three = ""
+            
+            # stores the cycle information for the ID stage
+            ID_cycle = most_recent_stall+1
+            last_ID_cycle = ID_cycle # change the last ID cycle for next iteration
+            current_instruction[ID_cycle] = "ID"
+
+            # checks the stalled cycles list
+            registers_check() # checks for the largest read cycle to wait for
+            most_recent_stall = write_stalled_cycles(ID_cycle)
 
             # execute the instruction
-            # assumes the right number of operands are present for the given opcode
-            if opcode == "L.D": # L.D Fa, Offset(addr), Load a floating point value into Fa
-                op_two = op_two.replace(')', '').split('(')
-                offset, address = op_two[0], op_two[1]
+            # assumes the instruction given will have the correct operands with the supplied opcode
+            if opcode == "L.D" or opcode == "LW": # L.D Fa, Offset(addr), LW $d, Offset(addr) -> Load a floating point/int value into Fa/$d
+                # if LD is detected, pretty much just skip the Ex stage and enter the MEM stage(s)
+                EX_cycle = most_recent_stall+1
+                current_instruction[EX_cycle] = "EX"
+                most_recent_stall = write_stalled_cycles(EX_cycle)
 
-                # checks cache
-                if address in self.cache:
+                address = offset = 0 # in case offset not present, initialize it to 0 as a place holder
+                if '$' in op_two: # indicate register is being used
+                    if '(' in op_two: # indicates offset presence
+                        op_two = op_two.replace(')', '').split('(')
+                        offset, address = op_two[0], op_two[1]
+                    # regardless of whether the offset is present, the address here will always be the return value of the register
+                    address = self.registers.retrieve(address).get_data() # sets address to value of the register
+    
+                elif '$' not in op_two: # basic input validation
+                    raise Exception("Bruh, you need a register for load instructions")
+
+                address += int(offset) # combine the address and the offset into one int immediate address
+                address %= self.memory.get_length() # this will yield the actual mem address, as any addresses > 18 will not be accepted
+
+                registers_check('w') # register's write-readiness check
+
+                # self.cache = {key:set# : Value:[dirty bit, memory address, data]}
+                cache_set = address % self.cache_size
+                MEM_cycle = most_recent_stall+1
+                most_recent_stall = write_stalled_cycles(MEM_cycle)
+                if self.cache[cache_set][1] != address: # this means the address at the required cache set is not the same, ie. a miss
+                    stalled_cycles.append(MEM_cycle+1)
+                    stalled_cycles.append(MEM_cycle+2)
+
+                    # if cahe miss, there will be three MEM stages after EX
+                    current_instruction[MEM_cycle] = current_instruction[MEM_cycle+1] = current_instruction[MEM_cycle+2] = "MEM"
+                    most_recent_stall = MEM_cycle+2 # given the possibility of multiple MEM stages, most recent stall will always be the last MEM stage
+
+                    # write to cache
+                    self.cache[cache_set] = [0, address, self.memory.retrieve_at_address(address)]
+
+                elif self.cache[cache_set][1] == address: # mem address already in cache
                     self.registers.write_to(_id=op_one, _data=self.memory.retrieve_at_address(_address=address, _offset=offset))
-                break
+                    current_instruction[MEM_cycle] = "MEM"
+                    most_recent_stall = MEM_cycle
 
+                # end of EX and MEM stages
+                self.registers.write_to(_id=op_one, _data=self.cache[cache_set][2]) # write to register using cache
+                
+                WB_cycle = most_recent_stall+1
+                current_instruction[WB_cycle] = "WB"
+
+                self.registers.retrieve(op_one).set_read_cycle(cycle=most_recent_stall) # the register used will not be ready until the end of MEM stage
+                self.registers.retrieve(op_one).set_write_cycle(cycle=WB_cycle) # register will not be ready to be written to until WB
+                self.insExecuted.append(current_instruction)
+                
+                opcode_index = opcode = op_one = op_two = op_three = None # flushes key variables between iterations
+                
             if opcode == "S.D": # S.D Fa, Offset(addr), Store a floating point value from Fa
-                pass
+                EX_cycle = most_recent_stall+1
+                current_instruction[EX_cycle] = "EX"
+                most_recent_stall = write_stalled_cycles(EX_cycle)
+
+                address = offset = 0
+
             if opcode == "LI": # LI $d, IMM64 -Integer Immediate, Load Load a 64 bit Integer Immediate into $d
-                pass
-            if opcode == "LW": # LW $d, Offset(addr), Load an integer value into $d
-                pass
+                # identical to L.D but without register-read-check and cache check
+                EX_cycle = most_recent_stall+1
+                current_instruction[EX_cycle] = "EX"
+                most_recent_stall = write_stalled_cycles(EX_cycle)
+
+                registers_check('w') # register's write-readiness check
+                MEM_cycle = most_recent_stall+1
+                current_instruction[MEM_cycle] = "MEM"
+                most_recent_stall = write_stalled_cycles(MEM_cycle)
+                self.registers.write_to(_id=op_one, _data=op_two) # unsure if immediates can have offsets, something like 7(18) will not be accepted for now
+
+                WB_cycle = most_recent_stall+1
+                current_instruction[WB_cycle] = "WB"
+                self.insExecuted.append(current_instruction)
+                opcode_index = opcode = op_one = op_two = op_three = None
+
             if opcode == "SW": # SW $s, Offset(addr), Store an integer from $s
                 pass
-            if opcode == "ADD": # ADD $d, $s, $t - Integer add, $d = $s + $t
+            if opcode == "ADD" or opcode == "ADD.D": # ADD $d, $s, $t | ADD.D Fd, Fs, Ft -> Integer add, $d = $s + $t | Floating Point Add, Fd = Fs + Ft
                 pass
             if opcode == "ADDI": # ADDI $d, $s, immediate – Integer Add with Immediate, $d = $s + immediate
                 pass
-            if opcode == "ADD.D":# ADD.D Fd, Fs, Ft – Floating Point Add, Fd = Fs + Ft
-                pass
-            if opcode == "SUB": # SUB $d, $s, $t -Integer Subtract, $d = $s - $t
-                pass            
-            if opcode == "SUB.D": # SUB.D Fd, Fs, Ft – Floating Point Subtract, Fd = Fs - Ft
+            if opcode == "SUB" or opcode == "SUB.D": # SUB $d, $s, $t | SUB.D Fd, Fs, Ft -> Integer Subtract, $d = $s - $t | Floating Point Subtract, Fd = Fs - Ft
                 pass
             if opcode == "MUL.D": # MUL.D Fd, Fs, Ft -Floating Point Multiply, Fd = Fs X Ft
                 pass
@@ -405,34 +412,32 @@ class Pipeline:
                 pass
             
 
-
-
             opcode_index = opcode = op_one = op_two = op_three = None # flushes key variables between iterations
 
     # prototype function
     def write_to_excel(self, _filename="test.xls"):
         try: os.remove(_filename) # clean up, makes testing easier
         except Exception: pass
+
         #write to excel file
-        wb = Workbook()
-        sheet1 = wb.add_sheet(_filename)
-
-        # prints out cycle #s on top
-        end_cycle = self.insExecuted[-1].cycle_
-        for i in range(1, end_cycle):
-            sheet1.write(0, i, i)
+        wb = xlwt.Workbook(encoding='utf-8')
         
-        for i in range(1,len(self.insExecuted)+1):
+        sheet1 = wb.add_sheet(_filename)
+        sheet1.col(0).width = 256 * 18 # some arbitrary width big enough to theoretically fit most instructions
+        sheet1.set_panes_frozen(True)
+        sheet1.set_vert_split_pos(1) 
+        # prints out cycle#s on top
+        end_cycle = max(self.insExecuted[-1].keys()) # end cycle is the largest key of the last instruction executed
+        sheet1.write(0,0, "Cycle", xlwt.easyxf("font: bold on; align: horiz right"))
+        for i in range(1, end_cycle+1):
+            sheet1.write(0, i, i, xlwt.easyxf("align: horiz left"))
+        
+        for i in range(1, len(self.insExecuted)+1):
             # write(row, column, item)
-            sheet1.write(i,0, self.insExecuted[i-1].__str__()) # the col in this will always be 0
-            sheet1.write(i,self.insExecuted[i-1].if_, "IF")
-            sheet1.write(i,self.insExecuted[i-1].id_, "ID")
-            sheet1.write(i,self.insExecuted[i-1].ex_[0], "EX")
-            sheet1.write(i,self.insExecuted[i-1].mem_[0], "MEM")
-            sheet1.write(i,self.insExecuted[i-1].wb_, "WB")
+            for cycle in self.insExecuted[i-1]:
+                sheet1.write(i,cycle, self.insExecuted[i-1][cycle])
         wb.save(_filename)
-
-
+        os.startfile(_filename)
 
 if __name__ == '__main__':
     registers = Registers() # all registers
@@ -440,8 +445,9 @@ if __name__ == '__main__':
     # registers.print_all_registers()
     # memory.print_all_memory()
     pipeline = Pipeline()
-    pipeline.print_all_instruction_objects()
-    pipeline.print_all_loops_and_addresses()
+    # pipeline.print_all_instruction_objects()
+    # pipeline.print_all_loops_and_addresses()
 
-    pipeline.execute_lines()
-    # pipeline.write_to_excel()
+    pipeline.execute()
+    pipeline.registers.print_all_registers()
+    pipeline.write_to_excel()
