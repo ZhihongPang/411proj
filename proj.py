@@ -171,7 +171,7 @@ class Pipeline:
     Pipeline parses the text file into a list of instruction lists, 
     a two dimensional array where each index of the list is a list of label, opcode, all the operands for every line of the text file
     """
-    def __init__(self, _fileName="test.txt"):
+    def __init__(self, _fileName="example1.txt"):
         self.instructions = {} # holds a dictionary of instructions, with keys:instruction address and value:instructions
         self.loops = {} # tracks where loops begin, key:loop name, value:instruction's address
         self.branches = {} # branch predictor, key:address of branch, value: 1|0 where 1 == taken and 0 == not taken
@@ -217,7 +217,7 @@ class Pipeline:
 
     # just take the filename and do something with it
     # takes a MIPS file, returns a list of instruction lists
-    def parser(_filename="test.txt"):
+    def parser(_filename="example1.txt"):
         instructions = []
         with open(_filename, 'r', encoding='utf-8', errors='ignore') as file:
             lines = file.readlines()
@@ -288,13 +288,16 @@ class Pipeline:
         instruction_counter = 0 
         stalled_cycles = [] # list of stalled cycles
         last_ID_cycle = 1 # tracks the last ID cycle  
-        for i in range(len(self.instructions)): ############## change to while instruction_counter != len(self.instructions) when done ###############
+
+        #this condition doesn't work so we have to have a try and except with a break as th exception
+        while instruction_counter != len(self.instructions): ############## change to while instruction_counter != len(self.instructions) when done ###############
             # key:cycle value:{0:raw instruction line, IF cycle:IF, IF-ID stalls, ID cycle:ID, ID-EX stalls, all EX cycles:EX(#),...
             #                               ... EX-MEM stalls, all MEM cycles:MEM, WB cycle:WB}
             current_instruction = {}
 
             # fetch instruction and stores the cycle data
-            instruction = self.instructions[instruction_counter] # using instruction_counter as key, fetch corresponding instruction
+            try: instruction = self.instructions[instruction_counter] # using instruction_counter as key, fetch corresponding instruction
+            except Exception: break
             IF_cycle = last_ID_cycle
             current_instruction[0] = self.__str__(self.instructions[instruction_counter])
             current_instruction[IF_cycle] = "IF" # this adds key:cycle value:stage into the current instruction dictionary
@@ -508,8 +511,9 @@ class Pipeline:
 
             # predictor falls under these jump instructions
             if opcode == "BEQ" or opcode == "BNE": # BEQ $S, $T, OFF18 - Branch to offset if equal/not equal, IF $S = $T | IF $S ≠ $T, PC += OFF18±
-                address = self.loops[label][0] if label in self.loops else op_three # instruction address to jump to, either address of the label or an immediate
-                
+                address = self.loops[op_three] if op_three in self.loops else op_three # instruction address to jump to, either address of the label or an immediate
+                data1 = self.registers.retrieve(op_one).get_data()
+                data2 = self.registers.retrieve(op_two).get_data()
                 ### so there's 4 possible cases, correctly predict taken/not taken, incorrectly predict taken/not taken
                 ### for correctly predicted taken/not takens, just change the instruction counter and continue
                 ### for incorrectly predicted branches, find the largest read cycle between both registers and then execute all predicted instructions
@@ -518,15 +522,80 @@ class Pipeline:
                 ### also need to take into account that there can be more instructions after the branch, so the solution cannot just be to end the entire pipeline
                 ### in sheet 1, if there had been more instructions after the branch, in row 42, where would the IF stage go? would it go in column BG?
                 ### whatever the implementation, be sure to document thoroughly in the readme
+                
 
-                if opcode == "BEQ" and self.registers.retrieve(op_one).get_data() == self.registers.retrieve(op_two).get_data():
+                if opcode == "BEQ" and data1 == data2 or opcode == "BNE" and data1 != data2:
                     instruction_counter = address # pseudo jump
-                elif opcode == "BNE" and self.registers.retrieve(op_one).get_data() != self.registers.retrieve(op_two).get_data():
-                    instruction_counter = address
-                else: instruction_counter += 1 # coming out of the loops
 
+                    #updating EX cycle and Most recent stall
+                    EX_cycle = most_recent_stall+1
+                    most_recent_stall = write_stalled_cycles(EX_cycle)
+
+                    registers_check(current_cycle=EX_cycle) # registers' read-readiness check
+                    current_instruction[most_recent_stall] = "EX"
+
+                    self.insExecuted.append(current_instruction)
+                
+
+                elif opcode == "BNE" and data1 == data2 or opcode == "BEQ" and data1 != data2:                   
+                    #updating EX cycle and Most recent stall
+                    EX_cycle = most_recent_stall+1
+                    most_recent_stall = write_stalled_cycles(EX_cycle)
+
+                    registers_check(current_cycle=EX_cycle) # registers' read-readiness check
+                    current_instruction[most_recent_stall] = "EX"
+                    
+                    self.insExecuted.append(current_instruction)
+                    
+                    print(instruction_counter)
+                    def make_two_dummy():
+                        current_instruction = {}
+                        instruction_counter = address
+                        #setting current instruction to first instruction in the loop
+                        current_instruction[0] = self.__str__(self.instructions[instruction_counter])
+                        
+                        #updating IF cycle and Most recent stall
+                        IF_cycle = last_ID_cycle
+                        print(last_ID_cycle)
+                        most_recent_stall = write_stalled_cycles(IF_cycle)
+                    
+                        current_instruction[most_recent_stall] = "IF"
+                        
+                        ID_cycle = IF_cycle + 1
+                        
+                        most_recent_stall = write_stalled_cycles(ID_cycle)
+                    
+                        current_instruction[most_recent_stall] = "ID"
+
+                        self.insExecuted.append(current_instruction)
+                        
+                        current_instruction = {}
+                        #setting current instruction to first instruction in the loop
+                        current_instruction[0] = self.__str__(self.instructions[instruction_counter+1])
+                        
+                        #updating IF cycle and Most recent stall
+                        IF_cycle = ID_cycle
+                        most_recent_stall = write_stalled_cycles(IF_cycle)
+
+                        current_instruction[most_recent_stall] = "IF"
+
+                        self.insExecuted.append(current_instruction)
+
+                        return IF_cycle+1
+                        
+
+                    #checking to see if there instructions after the loop if there continue out the loop if not go back to loop
+                    try: 
+                        if self.instructions[instruction_counter]:
+                            last_ID_cycle = make_two_dummy()
+
+                            
+                    except Exception: 
+                        make_two_dummy()
+                        
+                
             if opcode == 'J': # J ADDR28 - Unconditional jump to addr, PC = PC31:28 :: ADDR28∅
-                address = self.loops[label][0] if label in self.loops else op_three
+                address = self.loops[label] if label in self.loops else op_three
                 instruction_counter = address
             
 
@@ -567,4 +636,5 @@ if __name__ == '__main__':
 
     pipeline.execute()
     pipeline.registers.print_all_registers()
+    
     pipeline.write_to_excel()
