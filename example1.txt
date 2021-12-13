@@ -14,4 +14,3 @@ Loop:	L.D F0,0($2)
 	    ADDI $4,$4,1
 		ADDI $7, $7, 1
 	    BNE $7,$1,Loop
-J 15

@@ -294,14 +294,17 @@ class Pipeline:
         instruction_counter = 0 # program counter
         stalled_cycles = [] # list of stalled cycles
         last_ID_cycle = 1 # tracks the last ID cycle  
-        while instruction_counter != len(self.instructions):
+        while instruction_counter < len(self.instructions):
             # key:cycle value:{0:raw instruction line, IF cycle:IF, IF-ID stalls, ID cycle:ID, ID-EX stalls, all EX cycles:EX(#),...
             #                               ... EX-MEM stalls, all MEM cycles:MEM, WB cycle:WB}
             current_instruction = {}
 
             # fetch instruction and stores the cycle data
             try: instruction = self.instructions[instruction_counter] # using instruction_counter as key, fetch corresponding instruction
-            except Exception: break
+            except Exception: 
+                for ins in self.instructions:
+                    print(f"program counter: {ins} instruction: {self.instructions[ins]}")
+                break
             IF_cycle = last_ID_cycle
             current_instruction[0] = self.__str__(self.instructions[instruction_counter])
             current_instruction[IF_cycle] = "IF"
@@ -618,8 +621,17 @@ class Pipeline:
                             make_two_dummy()
                 
             if opcode == 'J': # J ADDR28 - Unconditional jump to addr, PC = PC31:28 :: ADDR28∅
-                address = self.loops[label][0] if label in self.loops else op_three
-                instruction_counter = address
+                current_instruction[last_ID_cycle] = "IF"
+                most_recent_stall = write_stalled_cycles(last_ID_cycle)
+                current_instruction[most_recent_stall] = "ID"
+                most_recent_stall = write_stalled_cycles(most_recent_stall)
+                most_recent_stall += 1
+                current_instruction[most_recent_stall] = "EX"
+                self.insExecuted.append(current_instruction)
+                last_ID_cycle = most_recent_stall+1
+
+                address = self.loops[label] if label in self.loops else op_one
+                instruction_counter = int(address)
 
             opcode_index = opcode = op_one = op_two = op_three = None # flushes key variables between iterations
         
