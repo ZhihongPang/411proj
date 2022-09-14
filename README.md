@@ -4,7 +4,10 @@
 ## Overview
 Congratulations, you've stumbled upon our MIPS assembly pipeline simulator!
 When run on a Windows 10 system, this will automatically open an excel file named "Hot stuff.xls" with the three example outputs. If not, you can find the output file within the program directory. The final Register and Memory information can be found in the terminal you executed the program with.
-* to test different files, pass a list containing the file name into run(). For example, if you want to test only example1.txt, do run(["example1"]), but by default it will test all three example cases given.
+* to test different files, pass a list containing the file name into run(). For example, if you want to test only example1.txt, do the following, but by default it will test all three example cases given.
+```bash
+run(["example1"])
+```
 
 ## Installation
 Use the package manager pip to install xlwt
